@@ -15,7 +15,7 @@ fi
 PGEN_NAME="$1"
 BUILD_DIR_NAME="build_${PGEN_NAME}"
 
-ATHENAK_ROOT="${ATHENAK_ROOT:-$HOME/Meemik/athenak_cool}"
+ATHENAK_ROOT="${ATHENAK_ROOT:-$HOME/Meemik/athenak_MR}"
 if [ ! -d "$ATHENAK_ROOT" ]; then
     echo "Error: ATHENAK_ROOT=$ATHENAK_ROOT does not exist."
     exit 1
