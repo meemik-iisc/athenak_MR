@@ -13,6 +13,13 @@ tst/test_log.txt
 *.hst
 *.rst
 
+#PNG Files
+*.png
+
+#Build Files
+*.o
+*.a
+
 # Mac OS metadata
 .DS_Store
 .vscode
