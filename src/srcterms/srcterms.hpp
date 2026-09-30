@@ -11,6 +11,8 @@
 //!  (1) constant (gravitational) acceleration - for RTI
 //!  (2) shearing box in 2D (x-z), for both hydro and MHD
 //!  (3) random forcing to drive turbulence - implemented in TurbulenceDriver class
+//!  (4) optically thin ISM cooling, either explicit inside the RK stages (default) or
+//!      operator-split and sub-cycled after the hydro step (cooling_subcycle = true)
 
 #include <map>
 #include <string>
@@ -46,6 +48,21 @@ class SourceTerms {
   // data for ISM cooling
   Real hrate;
 
+  // data for sub-cycled ISM cooling (operator split, applied by Driver after RK stages)
+  bool ism_cooling_subcycle;  // if true: cooling removed from RK stages, done by Driver
+  int  cool_nsub_max;         // maximum number of cooling sub-steps per hydro step
+  Real cool_cfl;              // each sub-step satisfies dt_sub <= cool_cfl * t_cool_min
+  int  last_nsub;             // number of sub-steps used in the most recent cycle
+  // tabulated cooling function (float, uniform in log10 T) used by the sub-cycled solver
+  bool cool_table;            // if true: table lookup instead of ISMCoolFn() (default)
+  DvceArray1D<float> cool_tab;
+  float cool_tab_logt0;       // log10(T) of first entry
+  float cool_tab_dinv;        // 1/dlog10(T)
+  int   cool_tab_n;           // number of entries
+  // post-cooling t_cool,min computed inside the cooling kernel (reused by NewTimeStep)
+  Real tcool_min_post;
+  bool have_tcool_min_post;
+
   // data for relativistic cooling
   Real crate_rel;
   Real cpower_rel;
@@ -70,6 +87,9 @@ class SourceTerms {
                    const Real bdt, DvceArray5D<Real> &u0);
   void BeamSource(DvceArray5D<Real> &i0, const Real bdt);
   void NewTimeStep(const DvceArray5D<Real> &w0, const EOS_Data &eos);
+  Real MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eos);
+  void SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u0,
+                          const EOS_Data &eos, const Real dt);
 
  private:
   MeshBlockPack *pmy_pack;

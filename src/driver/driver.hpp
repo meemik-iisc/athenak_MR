@@ -85,6 +85,8 @@ class Driver {
   void SetSTSStage(int stage);
   void EndSTSSweep();
   void OutputCycleDiagnostics(Mesh *pm);
+  void ApplySubcycledCooling(Mesh *pm);   // operator-split ISM cooling after RK stages
+  int last_cool_nsub_ = 0;                // cooling sub-steps in last cycle (0 = unused)
   Real UpdateWallClock();
 };
 #endif // DRIVER_DRIVER_HPP_

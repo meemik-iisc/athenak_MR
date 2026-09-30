@@ -329,6 +329,15 @@ Hydro::Hydro(MeshBlockPack *ppack, ParameterInput *pin) :
       // cell range (including ghost zones) in every dimension.
       Kokkos::realloc(wl3d, nmb, (nhydro+nscalars), ncells3, ncells2, ncells1);
       Kokkos::realloc(wr3d, nmb, (nhydro+nscalars), ncells3, ncells2, ncells1);
+      // allocate array of flags and scratch state used with FOFC.
+      // (This block was dropped in commit 7f05899 "Split recon rsolver clean (#757)",
+      // leaving fofc/utest at their 1-element default size, so fofc = true wrote out
+      // of bounds: segfault on CPU, silent memory corruption on GPU.)
+      if (use_fofc) {
+        Kokkos::realloc(fofc,  nmb, ncells3, ncells2, ncells1);
+        Kokkos::realloc(utest, nmb, nhydro, ncells3, ncells2, ncells1);
+        Kokkos::deep_copy(fofc, false);
+      }
     }
   }
 }

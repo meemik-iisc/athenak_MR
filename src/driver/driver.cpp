@@ -25,6 +25,8 @@
 #include "dyn_grmhd/dyn_grmhd.hpp"
 #include "ion-neutral/ion-neutral.hpp"
 #include "radiation/radiation.hpp"
+#include "eos/eos.hpp"                
+#include "srcterms/srcterms.hpp"     
 #include "driver.hpp"
 #include "gravity/gravity.hpp"
 #include "utils/utils.hpp"
@@ -573,6 +575,11 @@ void Driver::Execute(Mesh *pmesh, ParameterInput *pin, Outputs *pout, bool wdfla
       // Work after time integrator indicated by "1" in stage
       ExecuteTaskList(pmesh, "after_timeintegrator", 1);
 
+      // Operator-split ISM cooling, sub-cycled over the full hydro step (only active
+      // when <hydro_srcterms> or <mhd_srcterms> sets cooling_subcycle = true)
+      ApplySubcycledCooling(pmesh);
+
+
       // Diffusion coefficients may depend on the post-RK state. Refresh the global
       // stability bound before choosing the second Strang-split half-sweep.
       if (pmesh->sts_integrator != parabolic::STSIntegrator::none) {
@@ -715,11 +722,35 @@ void Driver::OutputCycleDiagnostics(Mesh *pm) {
     Real elapsed = pwall_clock_->seconds();
     std::cout << "elapsed=" << std::scientific << std::setprecision(dtprcsn) << elapsed
               << " cycle=" << pm->ncycle
-              << " time=" << pm->time << " dt=" << pm->dt << std::endl;
+              << " time=" << pm->time << " dt=" << pm->dt;
+    if (last_cool_nsub_ > 0) {std::cout << " cool_nsub=" << last_cool_nsub_;}
+    std::cout << std::endl;
   }
   return;
 }
+//----------------------------------------------------------------------------------------
+//! \fn Driver::ApplySubcycledCooling()
+//! \brief Integrates ISM cooling over the full hydro step pm->dt with n_sub explicit
+//! sub-steps (n_sub global, see SourceTerms::SubcycleISMCooling). Called once per cycle
+//! after the RK stages, when u0/w0 are consistent in active and ghost cells. Afterwards
+//! the source-term timestep is recomputed from the post-cooling state, since the
+//! Hydro/MHD NewTimeStep task ran on the pre-cooling state during the last RK stage.
 
+void Driver::ApplySubcycledCooling(Mesh *pm) {
+  hydro::Hydro *phyd = pm->pmb_pack->phydro;
+  if (phyd != nullptr && phyd->psrc != nullptr && phyd->psrc->ism_cooling_subcycle) {
+    phyd->psrc->SubcycleISMCooling(phyd->w0, phyd->u0, phyd->peos->eos_data, pm->dt);
+    phyd->psrc->NewTimeStep(phyd->w0, phyd->peos->eos_data);
+    last_cool_nsub_ = phyd->psrc->last_nsub;
+  }
+  mhd::MHD *pmhd = pm->pmb_pack->pmhd;
+  if (pmhd != nullptr && pmhd->psrc != nullptr && pmhd->psrc->ism_cooling_subcycle) {
+    pmhd->psrc->SubcycleISMCooling(pmhd->w0, pmhd->u0, pmhd->peos->eos_data, pm->dt);
+    pmhd->psrc->NewTimeStep(pmhd->w0, pmhd->peos->eos_data);
+    last_cool_nsub_ = pmhd->psrc->last_nsub;
+  }
+  return;
+}
 //----------------------------------------------------------------------------------------
 //! \fn Driver::UpdateWallClock()
 //! \brief Update and sync the wall clock across all MPI ranks. This is necessary because
