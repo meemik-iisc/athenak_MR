@@ -85,7 +85,3 @@ dt          = 1.0            # time increment between outputs
 file_type   = bin               # Binary data dump
 variable    = hydro_w           # variables to be output
 dt          = 1.0             # time increment between outputs (10 output files)
-
-<output3>
-file_type   = rst               # Restart file
-dt          = 1.0
