@@ -1,0 +1,94 @@
+# Athena++ (Kokkos version) input file for spherical blast problem
+
+<comment>
+problem   = Spherical Bondi Accretion
+reference = (arXiv:2512.04166) JWST Confirmation of a Runaway Supermassive Black Hole via its Supersonic Bow Shock
+
+<job>
+basename  = wind_outflow_rad_bondi          # problem ID: basename of output filenames
+
+<mesh>
+nghost    = 4                   # Number of ghost cells
+nx1       = 1024                # Number of zones in X1-direction
+x1min     = -60.0               # minimum value of X1
+x1max     = 4.0                 # maximum value of X1
+ix1_bc    = outflow             # inner-X1 boundary flag
+ox1_bc    = user                # outer-X1 boundary flag
+
+nx2       = 128               # Number of zones in X2-direction
+x2min     = -4.0                # minimum value of X2
+x2max     = 4.0                 # maximum value of X2
+ix2_bc    = outflow             # inner-X2 boundary flag
+ox2_bc    = outflow             # outer-X2 boundary flag
+
+nx3       = 128                   # Number of zones in X3-direction
+x3min     = -4.0                # minimum value of X3
+x3max     = 4.0                 # maximum value of X3
+ix3_bc    = outflow             # inner-X3 boundary flag
+ox3_bc    = outflow             # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 1024                 # Number of cells in each MeshBlock, X1-dir(1)
+nx2       = 128                 # Number of cells in each MeshBlock, X2-dir(1)
+nx3       = 128                   # Number of cells in each MeshBlock, X3-dir(1)
+
+
+
+
+
+<time>
+evolution  = dynamic            # dynamic/kinematic/static
+integrator = rk2                # time integration algorithm
+cfl_number = 0.15               # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = -1                 # cycle limit
+tlim       = 60.0               # time limit(60 Myr)
+ndiag      = 100000             # cycles between diagostic output
+
+<hydro>
+eos         = ideal             # EOS type
+reconstruct = plm               # spatial reconstruction method
+rsolver     = hlle               # Riemann-solver to be used
+nscalars    = 1                 # number of passive scalars in hydro
+gamma       = 1.666666666667    # gamma = C_p/C_v
+fofc        = true
+
+<hydro_srcterms>
+ism_cooling = true
+hrate       = 0.0    # or whatever heating rate you want
+
+
+<units>
+length_cgs  = 3.086e+21         # 1 kpc  'L0'
+mass_cgs    = 4.907e+40         # 1 (kpc^3)*(1mp/cm^3)   'L0^3*rho0'
+time_cgs    = 3.086e+13         # 0.97 Myr; v0 = 1000 km/s
+
+<problem>
+user_srcs   = True              #Set to True to enable User Source Terms
+n_cgm0      = 1.0e-3            #1 mp/cc
+n_ism0      = 10.0              #10 mp/cc
+H_ism       = 10.0              #kpc
+H_cgm       = 100.0             #kpc           
+T_cgm       = 1e6               #K
+t_tr        = 10                #Myr
+dt_ncgm     = 10.0              #Myr
+M_bh        = 0.811             #2e7 M_solar 
+v_bh        = 1.0               #1000km/s
+epsilon     = 1.0e-2            #pc (0.1R_bondi)
+Mdot_0      = 3.97e-5           #1e-3 Msun/yr
+dt_mdot     = 10                #Myr
+vw_0        = 0.1               #1e3 km/s
+dt_vw       = 25                #Myr
+r_inj       = 0.1               #100 pc
+
+<output1>
+file_type   = hst               # History data dump
+dt          = 1.0e-1            # time increment between outputs
+
+<output2>
+file_type   = bin               # Binary data dump
+variable    = hydro_w           # variables to be output
+dt          = 1.0               # time increment between outputs (10 output files)
+
+<output3>
+file_type   = rst               # Restart file
+dt          = 1.0e1
