@@ -71,6 +71,9 @@ SourceTerms::SourceTerms(std::string block, MeshBlockPack *pp, ParameterInput *p
   cool_tab_n = 0;
   tcool_min_post = static_cast<Real>(std::numeric_limits<float>::max());
   have_tcool_min_post = false;
+  cool_mask = false;
+  cool_mask_index = 0;
+  cool_mask_threshold = 0.0;
 
   // (1) read data for (constant) gravitational acceleration
   if (const_accel) {
@@ -86,6 +89,25 @@ SourceTerms::SourceTerms(std::string block, MeshBlockPack *pp, ParameterInput *p
   // (2) Optically thin ISM cooling
   if (ism_cooling) {
     hrate = pin->GetReal(block, "hrate");
+    // optional mask: no cooling where passive scalar cool_mask_scalar < threshold
+    int mask_scalar = pin->GetOrAddInteger(block, "cool_mask_scalar", -1);
+    if (mask_scalar >= 0) {
+      std::string fluid = (block.compare(0, 3, "mhd") == 0) ? "mhd" : "hydro";
+      int nscal = pin->GetOrAddInteger(fluid, "nscalars", 0);
+      if (mask_scalar >= nscal) {
+        std::cout << "### FATAL ERROR in "<< __FILE__ <<" at line " << __LINE__
+                  << std::endl << "cool_mask_scalar=" << mask_scalar
+                  << " but <" << fluid << "> nscalars=" << nscal << std::endl;
+        std::exit(EXIT_FAILURE);
+      }
+      cool_mask = true;
+      cool_mask_index = IEN + 1 + mask_scalar;
+      cool_mask_threshold = pin->GetOrAddReal(block, "cool_mask_threshold", 1.0e-3);
+      if (global_variable::my_rank == 0) {
+        std::cout << "ISM cooling: masked where scalar " << mask_scalar << " < "
+                  << cool_mask_threshold << std::endl;
+      }
+    }
     ism_cooling_subcycle = pin->GetOrAddBoolean(block, "cooling_subcycle", false);
     if (ism_cooling_subcycle) {
       cool_nsub_max = pin->GetOrAddInteger(block, "cool_nsub_max", 100);
@@ -231,9 +253,13 @@ void SourceTerms::ISMCooling(const DvceArray5D<Real> &w0, const EOS_Data &eos_da
   Real cooling_unit = pmy_pack->punit->pressure_cgs()/pmy_pack->punit->time_cgs()
                       /n_unit/n_unit;
   Real heating_unit = pmy_pack->punit->pressure_cgs()/pmy_pack->punit->time_cgs()/n_unit;
+  const bool mask = cool_mask;
+  const int imask = cool_mask_index;
+  const Real mthr = cool_mask_threshold;
 
   par_for("cooling", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
+    if (mask && w0(m,imask,k,j,i) < mthr) return;
     // temperature in cgs unit
     Real temp = temp_unit*w0(m,IEN,k,j,i)/w0(m,IDN,k,j,i)*gm1;
     Real lambda_cooling = ISMCoolFn(temp)/cooling_unit;
@@ -528,6 +554,9 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
   auto tab = cool_tab;
   const float lt0 = cool_tab_logt0, dinv = cool_tab_dinv;
   const int ntab = cool_tab_n;
+  const bool mask = cool_mask;
+  const int imask = cool_mask_index;
+  const Real mthr = cool_mask_threshold;
 
   Real tmin = static_cast<Real>(std::numeric_limits<float>::max());
   Kokkos::parallel_reduce("srcterms_min_tcool",
@@ -543,7 +572,8 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
     Real rho  = w0(m,IDN,k,j,i);
     Real eint = w0(m,IEN,k,j,i);
     Real p_over_rho = gm1*eint/rho;
-    if (p_over_rho > 1.01*tfloor) {
+    bool cools = !(mask && w0(m,imask,k,j,i) < mthr);
+    if (cools && p_over_rho > 1.01*tfloor) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
       Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - heating_rate/heating_unit));
@@ -616,6 +646,9 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
   auto tab = cool_tab;
   const float lt0 = cool_tab_logt0, dinv = cool_tab_dinv;
   const int ntab = cool_tab_n;
+  const bool mask = cool_mask;
+  const int imask = cool_mask_index;
+  const Real mthr = cool_mask_threshold;
 
   // flattened loop over ALL cells (active + ghost), fused with the reduction that gives
   // the post-cooling t_cool,min for the next timestep (saves a separate pass)
@@ -636,8 +669,11 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
     Real efl  = fmax(pfloor, rho*tfloor)/gm1;    // same floors as ConsToPrim
     Real heat = heating_rate/heating_unit;
     Real e    = e0;
+    // masked cells skip cooling entirely (loop count 0) and do not limit the next dt
+    bool cools = !(mask && w0(m,imask,k,j,i) < mthr);
+    int  ns    = cools ? nsub : 0;
 
-    for (int s = 0; s < nsub; ++s) {
+    for (int s = 0; s < ns; ++s) {
       Real temp = temp_unit*gm1*e/rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
       Real net  = rho*(rho*lam/cooling_unit - heat);
@@ -649,7 +685,7 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
 
     // post-cooling cooling time of this cell (same definition as MinCoolingTime)
     Real p_over_rho = gm1*e/rho;
-    if (p_over_rho > 1.01*tfloor) {
+    if (cools && p_over_rho > 1.01*tfloor) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
       Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - heat));

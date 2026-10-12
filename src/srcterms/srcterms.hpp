@@ -62,6 +62,11 @@ class SourceTerms {
   // post-cooling t_cool,min computed inside the cooling kernel (reused by NewTimeStep)
   Real tcool_min_post;
   bool have_tcool_min_post;
+  // optional cooling mask on a passive scalar: cells whose scalar (mass fraction) is
+  // below cool_mask_threshold are not cooled and do not limit nsub or dt
+  bool cool_mask;
+  int  cool_mask_index;       // index of the masking scalar in w0 (IEN + 1 + n)
+  Real cool_mask_threshold;
 
   // data for relativistic cooling
   Real crate_rel;

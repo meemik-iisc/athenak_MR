@@ -60,6 +60,9 @@ void SourceTerms::NewTimeStep(const DvceArray5D<Real> &w0, const EOS_Data &eos_d
                         / n_unit/n_unit;
     Real heating_unit = pmy_pack->punit->pressure_cgs()/pmy_pack->punit->time_cgs()
                         / n_unit;
+    const bool mask = cool_mask;
+    const int imask = cool_mask_index;
+    const Real mthr = cool_mask_threshold;
 
     // find smallest (e/cooling_rate) in each cell
     Kokkos::parallel_reduce("srcterms_cooling_newdt",
@@ -72,6 +75,7 @@ void SourceTerms::NewTimeStep(const DvceArray5D<Real> &w0, const EOS_Data &eos_d
       int i = (idx - m*nkji - k*nji - j*nx1) + is;
       k += ks;
       j += js;
+      if (mask && w0(m,imask,k,j,i) < mthr) return;
 
       // temperature in cgs unit
       Real temp = temp_unit*w0(m,IEN,k,j,i)/w0(m,IDN,k,j,i)*gm1;
