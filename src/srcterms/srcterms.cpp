@@ -526,8 +526,11 @@ Real CoolLambda(const Real temp, const bool use_tab, const DvceArray1D<float> &t
 //----------------------------------------------------------------------------------------
 //! \fn Real SourceTerms::MinCoolingTime()
 //! \brief Rank-local minimum of t_cool = e_int / |n^2 Lambda(T) - n Gamma| over active
-//! cells. Cells at (or within 1% of) the temperature floor are excluded: they are clamped
-//! by the floor and cannot cool further, so they must not drive the number of sub-steps.
+//! cells. Cells at (or within 1% of) the energy floor max(pfloor, rho*tfloor)/(gamma-1)
+//! are excluded: they are clamped by the floor and cannot cool further, so they must not
+//! drive the number of sub-steps. Testing only P/rho against tfloor is not enough: when
+//! pfloor dominates (e.g. both floors at their FLT_MIN defaults and rho < 1), a floored
+//! cell has t_cool ~ pfloor/(rho^2 Lambda) and would collapse the dt cap.
 //! Returns FLT_MAX if no cell contributes. The caller performs any MPI reduction.
 
 Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eos_data) {
@@ -540,6 +543,7 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
   const int nji   = nx2*nx1;
 
   Real gm1          = eos_data.gamma - 1.0;
+  Real pfloor       = eos_data.pfloor;
   Real tfloor       = eos_data.tfloor;     // floor on P/rho, code units
   Real heating_rate = hrate;
   Real temp_unit    = pmy_pack->punit->temperature_cgs();
@@ -572,8 +576,9 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
     Real rho  = w0(m,IDN,k,j,i);
     Real eint = w0(m,IEN,k,j,i);
     Real p_over_rho = gm1*eint/rho;
+    Real efl  = fmax(pfloor, rho*tfloor)/gm1;    // same floors as ConsToPrim
     bool cools = !(mask && w0(m,imask,k,j,i) < mthr);
-    if (cools && p_over_rho > 1.01*tfloor) {
+    if (cools && eint > 1.01*efl) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
       Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - heating_rate/heating_unit));
@@ -685,7 +690,7 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
 
     // post-cooling cooling time of this cell (same definition as MinCoolingTime)
     Real p_over_rho = gm1*e/rho;
-    if (cools && p_over_rho > 1.01*tfloor) {
+    if (cools && e > 1.01*efl) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
       Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - heat));

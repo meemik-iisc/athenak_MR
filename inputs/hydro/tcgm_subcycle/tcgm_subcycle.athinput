@@ -51,6 +51,7 @@ rsolver     = hlle               # Riemann-solver to be used
 nscalars    = 1                 # number of passive scalars in hydro
 gamma       = 1.666666666667    # gamma = C_p/C_v
 fofc        = true
+tfloor      = 8.315e-5          # T floor = 1e4 K (T_unit = mu*amu*(1000 km/s)^2/k_B = 1.2027e8 K)
 
 <hydro_srcterms>
 ism_cooling         = true
