@@ -59,7 +59,7 @@ cool_table          = true    # tabulated float Lambda(T) (false = analytic ISMC
 hrate               = 0.0
 cooling_subcycle    = true    # operator-split cooling, sub-cycled after the hydro step
 cool_cfl            = 0.1     # each cooling sub-step <= cool_cfl * t_cool_min
-cool_nsub_max       = 1000     # max sub-steps per hydro step; also caps dt
+cool_nsub_max       = 10000     # max sub-steps per hydro step; also caps dt
 cool_mask_scalar    = 0       # no cooling where wind tracer (scalar 0) is below threshold
 cool_mask_threshold = 1.0e-3  # wind mass fraction; below this the cell is pure CGM
 
@@ -82,8 +82,8 @@ dt_ncgm     = 10.0              #Myr
 M_bh        = 0.811             #2e7 M_solar 
 v_bh        = 1.0               #1000km/s
 epsilon     = 1.0e-2            #pc (0.1R_bondi)
-Mdot_0      = 3.97e-5           #1e-3 Msun/yr
-dt_mdot     = 10                #Myr
+Mdot_0      = 8e-5              #5e-3 Msun/yr
+dt_mdot     = 15                #Myr
 vw_0        = 0.1               #1e3 km/s
 dt_vw       = 25                #Myr
 r_inj       = 0.1               #100 pc
