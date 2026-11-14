@@ -6,9 +6,8 @@
 // Licensed under the 3-clause BSD License (the "LICENSE")
 //========================================================================================
 //! \file ismcooling.hpp
-//! \brief function to implement ISM cooling
+//! \brief Functions to implement ISM cooling and its temperature derivative.
 
-// Athena++ headers
 #include "athena.hpp"
 
 //----------------------------------------------------------------------------------------
@@ -35,7 +34,7 @@ Real ISMCoolFn(Real temp) {
 
   Real logt = log10(temp);
 
-  // for temperatures less than 10^4 K, use Koyama & Inutsuka (2002)
+  // for temperatures less than 10^4.2 K, use Koyama & Inutsuka (2002)
   if (logt <= 4.2) {
     return (2.0e-19*exp(-1.184e5/(temp + 1.0e3)) + 2.8e-28*sqrt(temp)*exp(-92.0/temp));
   }
@@ -55,4 +54,19 @@ Real ISMCoolFn(Real temp) {
   Real logcool = (lhd[ipps+1]*dx - lhd[ipps]*(dx - 0.04))*25.0;
   return pow(10.0,logcool);
 }
-#endif // SRCTERMS_ISMCOOLING_HPP_
+
+//----------------------------------------------------------------------------------------
+//! \fn Real ISMCoolFnDeriv()
+//! \brief Temperature derivative dLambda/dT of the ISM cooling function, computed via
+//! central finite difference. Works correctly across all three temperature regimes and
+//! at their boundaries. Used by the implicit Newton-Raphson cooling solver.
+
+KOKKOS_INLINE_FUNCTION
+Real ISMCoolFnDeriv(Real temp) {
+  Real dT      = fmax(temp * 1.0e-4, 1.0);
+  Real temp_lo = fmax(temp - dT, 1.0);     // never pass negative T to ISMCoolFn
+  Real temp_hi = temp + dT;
+  return (ISMCoolFn(temp_hi) - ISMCoolFn(temp_lo)) / (temp_hi - temp_lo);
+}
+
+#endif  // SRCTERMS_ISMCOOLING_HPP_
