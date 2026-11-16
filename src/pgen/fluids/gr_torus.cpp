@@ -786,9 +786,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
 
 #if MPI_PARALLEL_ENABLED
     // get maximum value of gas pressure and bsq over all MPI ranks
-    MPI_Allreduce(MPI_IN_PLACE, &ptotmax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(MPI_IN_PLACE, &bsqmax, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
-    MPI_Allreduce(MPI_IN_PLACE, &bsqmax_intorus, 1, MPI_DOUBLE, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &ptotmax, 1, MPI_ATHENA_REAL, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &bsqmax, 1, MPI_ATHENA_REAL, MPI_MAX, MPI_COMM_WORLD);
+    MPI_Allreduce(MPI_IN_PLACE, &bsqmax_intorus, 1, MPI_ATHENA_REAL, MPI_MAX, MPI_COMM_WORLD);
 #endif
 
     // Apply renormalization of magnetic field

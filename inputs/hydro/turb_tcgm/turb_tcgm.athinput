@@ -72,11 +72,11 @@ user_srcs   = true              # BH gravity + wind injection
 M_bh        = 2.0e7             # Msun
 v_bh        = 1.0               # code units (1000 km/s)
 epsilon     = 1.0e-2            # kpc, gravitational softening
-n_cgm0      = 10.0              # cm^-3, CGM density at t = 0
-dt_ncgm     = 10.0              # n_cgm(t) = n_cgm0*exp(-t/dt_ncgm)
+n_cgm0      = 1.0               # cm^-3, CGM density at t = 0
+dt_ncgm     = 8.0               # n_cgm(t) = n_cgm0*exp(-t/dt_ncgm)
 T_cgm       = 1.0e6             # K
-Mdot0       = 1.0e-3            # Msun/yr, wind mass-loss rate at t = 0
-dt_mdot     = 10.0              # Mdot(t) = Mdot0*exp(-t/dt_mdot)
+Mdot0       = 0.5               # Msun/yr, wind mass-loss rate at t = 0
+dt_mdot     = 15.0              # Mdot(t) = Mdot0*exp(-t/dt_mdot)
 vw0         = 0.1               # code units (100 km/s), constant wind speed
 r_inj       = 0.1               # kpc, injection radius (3.2 cells)
 

@@ -37,7 +37,11 @@
 #endif
 
 namespace {
+#if SINGLE_PRECISION_ENABLED
+constexpr Real floor_den = 1.0e-37;   // 1e-300 underflows float
+#else
 constexpr Real floor_den = 1.0e-300;
+#endif
 constexpr Real pi = 3.14159265358979323846;
 }  // namespace
 

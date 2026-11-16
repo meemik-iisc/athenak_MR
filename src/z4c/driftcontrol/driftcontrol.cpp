@@ -297,8 +297,8 @@ void DriftControl::UpdateBoundedObserver(Real ramp, Real dt, bool advance) {
     // Effort ceiling in force this cycle.
     Real umax = dc_umax[a];
     if (dc_budget[a] >= 0.0 && dc_budget_c > 0.0) {
-      Real const left  = std::max(dc_budget[a] - dc_budget_used[a], 0.0);
-      Real const tleft = std::max(dc_budget_tend - pmesh->time, 1.0);
+      Real const left  = std::max(dc_budget[a] - dc_budget_used[a], static_cast<Real>(0.0));
+      Real const tleft = std::max(dc_budget_tend - pmesh->time, static_cast<Real>(1.0));
       Real const ubgt  = left / (dc_budget_c * tleft);
       umax = (umax < 0.0) ? ubgt : std::min(umax, ubgt);
     }

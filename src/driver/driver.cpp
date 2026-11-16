@@ -765,7 +765,7 @@ Real Driver::UpdateWallClock() {
     tnow = pwall_clock_->seconds();
   }
 #if MPI_PARALLEL_ENABLED
-  MPI_Bcast(&tnow, 1, MPI_DOUBLE, 0, MPI_COMM_WORLD);
+  MPI_Bcast(&tnow, 1, MPI_ATHENA_REAL, 0, MPI_COMM_WORLD);
 #endif
   return tnow;
 }

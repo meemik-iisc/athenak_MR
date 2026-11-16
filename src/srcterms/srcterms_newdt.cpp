@@ -53,13 +53,14 @@ void SourceTerms::NewTimeStep(const DvceArray5D<Real> &w0, const EOS_Data &eos_d
     Real gamma = eos_data.gamma;
     Real gm1 = gamma - 1.0;
     Real heating_rate = hrate;
-    Real temp_unit = pmy_pack->punit->temperature_cgs();
-    Real n_unit = pmy_pack->punit->density_cgs()/pmy_pack->punit->mu()
-                  / pmy_pack->punit->atomic_mass_unit_cgs;
-    Real cooling_unit = pmy_pack->punit->pressure_cgs()/pmy_pack->punit->time_cgs()
-                        / n_unit/n_unit;
-    Real heating_unit = pmy_pack->punit->pressure_cgs()/pmy_pack->punit->time_cgs()
-                        / n_unit;
+    // unit factors in double (rho_unit and P_unit/t_unit can over/underflow float),
+    // cast to Real once so the kernels run in the build precision
+    const units::Units *pu = pmy_pack->punit;
+    const double n_unit_d = pu->density_cgs()/pu->mu()/pu->atomic_mass_unit_cgs;
+    Real temp_unit    = static_cast<Real>(pu->temperature_cgs());
+    Real cooling_unit = static_cast<Real>(pu->pressure_cgs()/pu->time_cgs()
+                                          /n_unit_d/n_unit_d);
+    Real heating_unit = static_cast<Real>(pu->pressure_cgs()/pu->time_cgs()/n_unit_d);
     const bool mask = cool_mask;
     const int imask = cool_mask_index;
     const Real mthr = cool_mask_threshold;

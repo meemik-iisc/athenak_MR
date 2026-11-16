@@ -17,20 +17,20 @@
 namespace Primitive {
 
 struct UnitSystem {
-  Real c;    //! Speed of light
-  Real G;    //! Gravitational constant
-  Real kb;   //! Boltzmann constant
-  Real Msun; //! Solar mass
-  Real MeV;  // 10^6 electronvolt
+  double c;    //! Speed of light
+  double G;    //! Gravitational constant
+  double kb;   //! Boltzmann constant
+  double Msun; //! Solar mass
+  double MeV;  // 10^6 electronvolt
 
-  Real length;      //! Length unit
-  Real time;        //! Time unit
-  Real density;     //! Number density unit
-  Real mass;        //! Mass unit
-  Real energy;      //! Energy unit
-  Real pressure;    //! Pressure unit
-  Real temperature; //! Temperature unit
-  Real chemicalPotential; //! Chemical potential unit
+  double length;      //! Length unit
+  double time;        //! Time unit
+  double density;     //! Number density unit
+  double mass;        //! Mass unit
+  double energy;      //! Energy unit
+  double pressure;    //! Pressure unit
+  double temperature; //! Temperature unit
+  double chemicalPotential; //! Chemical potential unit
 
   //! \defgroup conversiongroup Conversion Methods
   //  A collection of methods for getting unit
