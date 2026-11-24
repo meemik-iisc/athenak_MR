@@ -64,6 +64,11 @@ void SourceTerms::NewTimeStep(const DvceArray5D<Real> &w0, const EOS_Data &eos_d
     const bool mask = cool_mask;
     const int imask = cool_mask_index;
     const Real mthr = cool_mask_threshold;
+    const Real href = heat_ref_rho, htmax = heat_tmax;
+    const bool use_tab = cool_table;
+    auto tab = cool_tab;
+    const float lt0 = cool_tab_logt0, dinv = cool_tab_dinv;
+    const int ntab = cool_tab_n;
 
     // find smallest (e/cooling_rate) in each cell
     Kokkos::parallel_reduce("srcterms_cooling_newdt",
@@ -82,8 +87,9 @@ void SourceTerms::NewTimeStep(const DvceArray5D<Real> &w0, const EOS_Data &eos_d
       Real temp = temp_unit*w0(m,IEN,k,j,i)/w0(m,IDN,k,j,i)*gm1;
       Real &eint = w0(m,IEN,k,j,i);
 
-      Real lambda_cooling = ISMCoolFn(temp)/cooling_unit;
-      Real gamma_heating = heating_rate/heating_unit;
+      Real lambda_cooling = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab)/cooling_unit;
+      Real gamma_heating = heating_rate/heating_unit
+                           + ((href > 0.0 && temp < htmax) ? href*lambda_cooling : 0.0);
 
       // add a tiny number
       Real cooling_heating = FLT_MIN + fabs(w0(m,IDN,k,j,i) *

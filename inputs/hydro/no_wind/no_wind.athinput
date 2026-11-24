@@ -1,0 +1,89 @@
+# AthenaK input file for no_wind: runaway BH in a uniform CGM, no wind (large box)
+
+<comment>
+problem   = Runaway BH through a uniform CGM, no wind, tabulated explicit cooling
+reference = (arXiv:2512.04166) JWST Confirmation of a Runaway Supermassive Black Hole via its Supersonic Bow Shock
+build     = ./make_build_single.sh no_wind   (single precision)
+
+<job>
+basename  = no_wind             # problem ID: basename of output filenames
+
+# BH frame: BH at the origin, CGM flows in through the outer-x1 face at -v_bh.
+# Same domain as turb_tcgm: 64 x 4 x 4 kpc, dx = 31.25 pc.
+<mesh>
+nghost    = 4                   # Number of ghost cells
+nx1       = 2048                # Number of zones in X1-direction (flow axis)
+x1min     = -60.0               # minimum value of X1 (kpc)
+x1max     = 4.0                 # maximum value of X1 (kpc)
+ix1_bc    = outflow             # inner-X1 boundary flag (wake exits here)
+ox1_bc    = user                # outer-X1 boundary flag (uniform CGM inflow)
+
+nx2       = 128                 # Number of zones in X2-direction
+x2min     = -2.0                # minimum value of X2
+x2max     = 2.0                 # maximum value of X2
+ix2_bc    = outflow             # inner-X2 boundary flag
+ox2_bc    = outflow             # outer-X2 boundary flag
+
+nx3       = 128                 # Number of zones in X3-direction
+x3min     = -2.0                # minimum value of X3
+x3max     = 2.0                 # maximum value of X3
+ix3_bc    = outflow             # inner-X3 boundary flag
+ox3_bc    = outflow             # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 256                 # Number of cells in each MeshBlock, X1-dir
+nx2       = 128                 # Number of cells in each MeshBlock, X2-dir
+nx3       = 128                 # Number of cells in each MeshBlock, X3-dir
+
+<time>
+evolution  = dynamic            # dynamic/kinematic/static
+integrator = rk2                # time integration algorithm
+cfl_number = 0.3                # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = -1                 # cycle limit
+tlim       = 60.0               # time limit (code time = 0.978 Myr)
+ndiag      = 100                # cycles between diagnostic output
+
+<hydro>
+eos         = ideal             # EOS type
+reconstruct = plm               # spatial reconstruction method
+rsolver     = hllc              # Riemann-solver to be used
+nscalars    = 0                 # no wind -> no tracer
+gamma       = 1.6666667         # gamma = C_p/C_v
+fofc        = true
+tfloor      = 1.3857e-4         # T floor = 1e4 K (T_unit = mu*amu*(1000 km/s)^2/k_B = 7.216e7 K for mu = 0.6)
+
+<hydro_srcterms>
+ism_cooling      = true
+cool_table       = true         # tabulated float Lambda(T) (false = analytic ISMCoolFn)
+cooling_subcycle = false        # explicit cooling in every RK stage, dt <= cfl*t_cool
+hrate            = 0.0          # no heating
+
+<units>
+length_cgs  = 3.086e+21         # 1 kpc  'L0'
+mass_cgs    = 4.907e+40         # 1 (kpc^3)*(1mp/cm^3)   'L0^3*rho0'
+time_cgs    = 3.086e+13         # 0.978 Myr; v0 = 1000 km/s
+mu          = 0.6               # mean molecular weight
+
+<problem>
+user_srcs   = true              # BH gravity + sink
+user_hist   = true              # accreted mass M_acc, M_acc_msun in the .hst file
+M_bh        = 2.0e7             # Msun
+v_bh        = 1000.0            # km/s
+epsilon     = 1.0e-2            # code length (kpc), gravitational softening
+n_cgm       = 1.0e-3            # cm^-3, uniform CGM density
+T_cgm       = 1.0e6             # K
+r_sink      = 7.0e-2             # code length (kpc), sink radius (~2.2 cells; R_acc = 0.17 pc is unresolved here)
+rho_sink_frac = 1.0e-2          # density inside the sink after removal, in units of rho_cgm
+
+<output1>
+file_type   = hst               # History data dump
+dt          = 0.1               # time increment between outputs
+
+<output2>
+file_type   = bin               # Binary data dump
+variable    = hydro_w           # variables to be output
+dt          = 1.0               # time increment between outputs
+
+<output3>
+file_type   = rst               # Restart file
+dt          = 10.0

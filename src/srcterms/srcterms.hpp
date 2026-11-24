@@ -47,6 +47,13 @@ class SourceTerms {
 
   // data for ISM cooling
   Real hrate;
+  // optional density-matched heating (set by a pgen; off when heat_ref_rho <= 0):
+  // heating per volume rho*heat_ref_rho*Lambda(T)/cooling_unit for T < heat_tmax [K],
+  // so net cooling = rho*(rho - heat_ref_rho)*Lambda(T): zero at rho = heat_ref_rho for
+  // any T (a uniform ambient medium cannot run away thermally), compressed gas cools,
+  // and gas hotter than heat_tmax cools at the full rate.
+  Real heat_ref_rho;
+  Real heat_tmax;
 
   // data for sub-cycled ISM cooling (operator split, applied by Driver after RK stages)
   bool ism_cooling_subcycle;  // if true: cooling removed from RK stages, done by Driver

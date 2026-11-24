@@ -69,4 +69,21 @@ Real ISMCoolFnDeriv(Real temp) {
   return (ISMCoolFn(temp_hi) - ISMCoolFn(temp_lo)) / (temp_hi - temp_lo);
 }
 
+//----------------------------------------------------------------------------------------
+//! \fn Real CoolLambda()
+//! \brief Lambda(T) [erg cm^3/s] from the float table built in SourceTerms (uniform in
+//! log10 T, linear interpolation, end values outside the range) or, if use_tab is false,
+//! from the analytic ISMCoolFn().
+
+KOKKOS_INLINE_FUNCTION
+Real CoolLambda(const Real temp, const bool use_tab, const DvceArray1D<float> &tab,
+                const float lt0, const float dinv, const int ntab) {
+  if (!use_tab) return ISMCoolFn(temp);
+  float x = (log10f(static_cast<float>(temp)) - lt0)*dinv;
+  x = fminf(fmaxf(x, 0.0f), static_cast<float>(ntab - 1) - 1.0e-3f);
+  int   i0 = static_cast<int>(x);
+  float f  = x - static_cast<float>(i0);
+  return static_cast<Real>(tab(i0) + f*(tab(i0+1) - tab(i0)));
+}
+
 #endif  // SRCTERMS_ISMCOOLING_HPP_

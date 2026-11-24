@@ -1,0 +1,144 @@
+# AthenaK input for testing the "capture" picture: a fast, light AGN wind whose shocked
+# gas cools (momentum-driven limit), BH at 1000 km/s through a uniform n = 10, 1e6 K CGM.
+# Same as capture_cool.athinput but n_cgm = 10 and pdot 10x larger (same R_0 = 54 pc,
+# same mesh), to test whether the shocked CGM becomes radiative at higher density.
+
+<comment>
+problem   = Fast cold (momentum-driven) wind, v_bh = 1000 km/s: does the AGN momentum halt
+            and capture ambient gas out to R_cap = 2 R_0?
+build     = ./make_build_single.sh fast_wind   (single precision; double also works)
+
+# n = 10: pdot_AGN = 3.5e34 dyn (10x the tCGM_vw2 ejection value; L/c -> L ~ 1e45 erg/s,
+# ~40% Eddington for 2e7 Msun).
+#   Fast wind v_w = 0.03c = 9000 km/s -> Mdot = pdot/v_w = 0.614 Msun/yr
+#   R_0 = sqrt(pdot / 4pi(rho v_bh^2 + P)) = 54 pc,  R_cap = 2 R_0(ram) = 108 pc
+#   Mach(v_bh) = 6.6; shocked CGM ~1.7e7 K at n ~ 35: t_cool ~ 0.17 Myr ~ flow time
+#   (n = 1: 1.7 Myr, adiabatic). Ambient gross t_cool = 5.6 kyr, held by the heating.
+#   Predicted captured-gas rate (paper eq.): Mdot_w = pdot/(v_bh + v_w,slow) ~ 4.6 Msun/yr
+#   for v_w,slow = 200 km/s.
+#   A fully cooled shell at 1e4 K in pressure balance with rho v_bh^2 = 1e-7 dyn/cm^2 has
+#   n ~ 7e4 cm^-3: unresolved and thin-shell unstable; read its structure with care.
+#   dt ~ 0.3 * 1.95 pc / 9000 km/s ~ 64 yr; tlim = 2000 (1.96 Myr, one box crossing)
+#   -> ~3.2e4 cycles, ~2 h in single precision on the RTX 4000 Ada.
+
+<job>
+basename  = capture_cool_n10
+
+# BH frame: BH at the origin, CGM flows in through the outer-x1 face at -v_bh.
+# 2000 x 1000 x 1000 pc with SMR (380 MeshBlocks of 32^3, 12.5M cells, ~7.8 GB in single):
+#   level 0  dx = 7.81 pc  whole box                                   108 blocks
+#   level 1  dx = 3.91 pc  x in [-1000, 250], y,z in [-250, 250]       144 blocks
+#   level 2  dx = 1.95 pc  x in [-375, 125],  y,z in [-125, 125]       128 blocks
+#            (R_0 = 27 cells, r_inj = 5 cells; contains R_cap = 108 pc and r_diag)
+# Refined regions snap outward to the parent level's blocks (root 250 pc, level 1
+# 125 pc, edges at x = -1500 + n*size, y,z = -500 + n*size), so keep their edges on
+# those lines. Keep refinement away from the user (inflow) face at x = 500.
+<mesh>
+nghost    = 4
+nx1       = 256
+x1min     = -1500.0             # pc, wake
+x1max     = 500.0               # pc, upstream (~9 R_0)
+ix1_bc    = outflow
+ox1_bc    = user                # uniform CGM inflow (+ impact-parameter tracer)
+
+nx2       = 128
+x2min     = -500.0              # pc
+x2max     = 500.0
+ix2_bc    = outflow
+ox2_bc    = outflow
+
+nx3       = 128
+x3min     = -500.0
+x3max     = 500.0
+ix3_bc    = outflow
+ox3_bc    = outflow
+
+<meshblock>
+nx1       = 32
+nx2       = 32
+nx3       = 32
+
+<mesh_refinement>
+refinement         = static
+prolong_primitives = true
+
+<refined_region1>
+level     = 1
+x1min     = -1000.0
+x1max     = 250.0
+x2min     = -250.0
+x2max     = 250.0
+x3min     = -250.0
+x3max     = 250.0
+
+<refined_region2>
+level     = 2
+x1min     = -375.0
+x1max     = 125.0
+x2min     = -125.0
+x2max     = 125.0
+x3min     = -125.0
+x3max     = 125.0
+
+<time>
+evolution  = dynamic
+integrator = rk2
+cfl_number = 0.3
+nlim       = -1
+tlim       = 2000.0             # code time = 977.8 yr -> 1.96 Myr (2000 pc at 1000 km/s)
+ndiag      = 200
+
+<hydro>
+eos         = ideal
+reconstruct = plm
+rsolver     = hllc
+nscalars    = 2                 # s_00 = wind fraction, s_01 = impact parameter b [pc]
+gamma       = 1.6666667
+fofc        = true
+tfloor      = 1.3857e-4         # 1e4 K (T_unit = 7.216e7 K for mu = 0.6)
+
+<hydro_srcterms>
+ism_cooling      = true         # CGM cooling ON (shocked/compressed CGM can cool)
+cool_table       = true
+cooling_subcycle = true         # dense cooled shell must not crush the hydro dt
+cool_cfl         = 0.1
+cool_nsub_max    = 1000
+hrate            = 0.0          # must be 0 (problem/heat_balance sets the heating)
+
+<units>
+length_cgs  = 3.086e+18         # 1 pc
+mass_cgs    = 4.907e+31         # 1 pc^3 * 1 mp/cm^3
+time_cgs    = 3.086e+10         # 977.8 yr; v0 = 1000 km/s
+mu          = 0.6
+
+<problem>
+user_srcs   = true              # gravity + wind cooling + wind reset
+user_hist   = true              # M_halt, Mdot_up, M_halt(b) in the .user.hst file
+M_bh        = 2.0e7             # Msun
+epsilon     = 1.0               # pc
+v_bh        = 1000.0            # km/s
+n_cgm       = 10.0              # cm^-3 (rho = 0.6 m_p n)
+T_cgm       = 1.0e6             # K
+heat_balance = true             # heating n_cgm Lambda(T) per particle: net cooling n(n-n_cgm)Lambda
+T_heat_max  = 3.0e6             # K; no heating above (shocked gas cools at n^2 Lambda)
+Mdot        = 0.614             # Msun/yr  (Mdot v_w = 3.5e34 dyn)
+v_w         = 8994.0            # km/s (0.03 c)
+T_w         = 1.0e4             # K
+r_inj       = 10.0              # pc; R_0/r_inj = 5.4
+wind_cool       = true          # momentum-driven limit: shocked wind cooled every stage
+T_wind_cool     = 1.0e5         # K
+wind_cool_fmin  = 0.5           # only wind-dominated cells
+r_diag      = 109.0             # pc (= R_cap); sphere for M_halt and Mdot_up
+
+<output1>
+file_type   = hst
+dt          = 1.0               # ~1 kyr
+
+<output2>
+file_type   = bin
+variable    = hydro_w           # incl. s_00 (wind) and s_01 (impact parameter)
+dt          = 40.0              # ~39 kyr, 51 dumps (~0.35 GB each in single)
+
+<output3>
+file_type   = rst
+dt          = 100.0

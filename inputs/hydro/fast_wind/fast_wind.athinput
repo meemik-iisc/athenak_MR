@@ -1,0 +1,122 @@
+# AthenaK input file for fast_wind: runaway BH with a fast (0.1c), light wind in a uniform CGM
+
+<comment>
+problem   = Runaway BH (100 km/s) with a 0.1c, 1e-4 Msun/yr wind in a uniform 1e6 K CGM
+reference = (arXiv:2512.04166) JWST Confirmation of a Runaway Supermassive Black Hole via its Supersonic Bow Shock
+build     = ./make_build_file.sh fast_wind   (DOUBLE precision: E_kin/E_th ~ 1e6 in the free wind)
+
+# Key scales (rho = 0.6 m_p, T = 1e6 K):
+#   R_0 = sqrt(Mdot v_w / 4pi(rho v_bh^2 + P)) ~ 26 pc  (ram only: 40 pc)
+#   c_s(CGM) = 151 km/s  -> v_bh = 100 km/s is subsonic (M = 0.66): no CGM bow shock,
+#   only wind termination shock + contact, swept into a tail.
+#   T(shocked wind) ~ 1e10 K, n_w(R_0) ~ 2e-5 cm^-3 -> no wind cooling.
+#   Global dt ~ 0.3 * 0.5 pc / 0.1c ~ 4.9 yr; tlim = 1000 (~1 Myr) -> ~2e5 cycles.
+#   14.4M cells at ~3.4e7 zone-cycles/s (FP64, RTX 4000 Ada) -> ~1 day.
+
+<job>
+basename  = fast_wind           # problem ID: basename of output filenames
+
+# BH frame: BH at the origin, CGM flows in through the outer-x1 face at -v_bh.
+# Root: 320 x 160 x 160 pc at dx = 1 pc; SMR to 0.5 pc in the inner 96 pc cube.
+<mesh>
+nghost    = 4                   # Number of ghost cells (>= 4 for SMR prolongation)
+nx1       = 320                 # Number of zones in X1-direction (flow axis)
+x1min     = -240.0              # minimum value of X1 (pc), downstream tail
+x1max     = 80.0                # maximum value of X1 (pc), ~3 R_0 upstream
+ix1_bc    = outflow             # inner-X1 boundary flag (wake exits here)
+ox1_bc    = user                # outer-X1 boundary flag (uniform CGM inflow)
+
+nx2       = 160                 # Number of zones in X2-direction
+x2min     = -80.0               # minimum value of X2 (pc)
+x2max     = 80.0                # maximum value of X2 (pc)
+ix2_bc    = outflow             # inner-X2 boundary flag
+ox2_bc    = outflow             # outer-X2 boundary flag
+
+nx3       = 160                 # Number of zones in X3-direction
+x3min     = -80.0               # minimum value of X3 (pc)
+x3max     = 80.0                # maximum value of X3 (pc)
+ix3_bc    = outflow             # inner-X3 boundary flag
+ox3_bc    = outflow             # outer-X3 boundary flag
+
+<meshblock>
+nx1       = 32                  # Number of cells in each MeshBlock, X1-dir
+nx2       = 32                  # Number of cells in each MeshBlock, X2-dir
+nx3       = 32                  # Number of cells in each MeshBlock, X3-dir
+
+<mesh_refinement>
+refinement         = static     # static mesh refinement
+prolong_primitives = true       # prolongate primitives (safer with huge contrasts)
+
+# Refined regions snap OUTWARD to the parent-level block grid (root blocks = 32 pc,
+# edges at x1 = -240+32k, x2,x3 = -80+32k), so keep region edges on those lines.
+# Memory: ~29 MiB per 32^3 block in double (+SMR buffers); ~450 blocks fit in 17 GB.
+#
+# Level 1 (dx = 0.5 pc): 96 pc cube around the BH = 3x3x3 root blocks -> 216 blocks.
+# Covers R_0 ~ 26 pc upstream and ~1.8 R_0 downstream. Total 223 + 216 = 439 blocks.
+<refined_region1>
+level     = 1
+x1min     = -48.0
+x1max     = 48.0
+x2min     = -48.0
+x2max     = 48.0
+x3min     = -48.0
+x3max     = 48.0
+
+# A 0.25 pc level 2 does not fit on a 20 GB GPU in double: around the origin it is
+# always >= 2 level-1 blocks per side (32 pc cube, 64 blocks) and halves dt.
+
+<time>
+evolution  = dynamic            # dynamic/kinematic/static
+integrator = rk2                # time integration algorithm
+cfl_number = 0.3                # The Courant, Friedrichs, & Lewy (CFL) Number
+nlim       = -1                 # cycle limit
+tlim       = 1000.0             # time limit: ~1 Myr (code time = 977.8 yr)
+ndiag      = 1000               # cycles between diagnostic output
+
+<hydro>
+eos         = ideal             # EOS type
+reconstruct = plm               # spatial reconstruction method
+rsolver     = hllc              # Riemann-solver to be used
+nscalars    = 1                 # wind tracer (mass fraction), also the cooling mask
+gamma       = 1.6666667         # gamma = C_p/C_v
+fofc        = true
+tfloor      = 1.3857e-4         # T floor = 1e4 K (T_unit = mu*amu*(1000 km/s)^2/k_B = 7.216e7 K for mu = 0.6)
+
+<hydro_srcterms>
+ism_cooling         = true
+cool_table          = true      # tabulated Lambda(T)
+cooling_subcycle    = false     # explicit; hydro dt (~yr) << t_cool anyway
+hrate               = 0.0
+cool_mask_scalar    = 0         # heating balance: gas with tracer < threshold (CGM) does not cool
+cool_mask_threshold = 1.0e-3    # same f_wind threshold as AddCGMHeating in ucgm_subcycle
+
+<units>
+length_cgs  = 3.086e+18         # 1 pc  'L0'
+mass_cgs    = 4.907e+31         # 1 (pc^3)*(1mp/cm^3)   'L0^3*rho0'
+time_cgs    = 3.086e+10         # 977.8 yr; v0 = 1000 km/s
+mu          = 0.6               # mean molecular weight
+
+<problem>
+user_srcs   = true              # BH gravity + wind reset
+M_bh        = 2.0e7             # Msun
+v_bh        = 100.0             # km/s
+epsilon     = 0.5               # code length (pc), gravitational softening
+n_cgm       = 1.0               # cm^-3 (rho = n*mu*amu = 0.6 m_p, as in the other pgens)
+T_cgm       = 1.0e6             # K
+Mdot        = 1.0e-4            # Msun/yr
+v_w         = 2.998e4           # km/s (0.1 c)
+T_w         = 1.0e4             # K, temperature of the injected (cold, free) wind
+r_inj       = 2.5               # code length (pc); 5 cells at 0.5 pc, R_0/r_inj ~ 10
+
+<output1>
+file_type   = hst               # History data dump
+dt          = 1.0               # time increment between outputs (~1 kyr)
+
+<output2>
+file_type   = bin               # Binary data dump
+variable    = hydro_w           # variables to be output (incl. tracer)
+dt          = 20.0              # ~20 kyr, 50 dumps (~0.8 GB each in double)
+
+<output3>
+file_type   = rst               # Restart file
+dt          = 100.0

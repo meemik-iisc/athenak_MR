@@ -7,34 +7,32 @@ reference = (arXiv:2512.04166) JWST Confirmation of a Runaway Supermassive Black
 <job>
 basename  = wind_outflow_rad_bondi          # problem ID: basename of output filenames
 
+# BH frame: BH at the origin, CGM flows in through the outer-x1 face at -v_bh.
+# Same box and resolution as turb_tcgm: dx = 31.25 pc in all directions.
 <mesh>
 nghost    = 4                   # Number of ghost cells
-nx1       = 1024                 # Number of zones in X1-direction
-x1min     = -60.0               # minimum value of X1
-x1max     = 4.0                 # maximum value of X1
-ix1_bc    = outflow             # inner-X1 boundary flag
-ox1_bc    = user                # outer-X1 boundary flag
+nx1       = 2048                # Number of zones in X1-direction (flow axis)
+x1min     = -60.0               # minimum value of X1 (kpc)
+x1max     = 4.0                 # maximum value of X1 (kpc)
+ix1_bc    = outflow             # inner-X1 boundary flag (wake exits here)
+ox1_bc    = user                # outer-X1 boundary flag (CGM inflow)
 
 nx2       = 128                 # Number of zones in X2-direction
-x2min     = -4.0                # minimum value of X2
-x2max     = 4.0                 # maximum value of X2
+x2min     = -2.0                # minimum value of X2
+x2max     = 2.0                 # maximum value of X2
 ix2_bc    = outflow             # inner-X2 boundary flag
 ox2_bc    = outflow             # outer-X2 boundary flag
 
-nx3       = 128                # Number of zones in X3-direction
-x3min     = -4.0                # minimum value of X3
-x3max     = 4.0                 # maximum value of X3
+nx3       = 128                 # Number of zones in X3-direction
+x3min     = -2.0                # minimum value of X3
+x3max     = 2.0                 # maximum value of X3
 ix3_bc    = outflow             # inner-X3 boundary flag
 ox3_bc    = outflow             # outer-X3 boundary flag
 
 <meshblock>
-nx1       = 1024                 # Number of cells in each MeshBlock, X1-dir(1)
-nx2       = 128                # Number of cells in each MeshBlock, X2-dir(1)
-nx3       = 128                  # Number of cells in each MeshBlock, X3-dir(1)
-
-
-
-
+nx1       = 256                 # Number of cells in each MeshBlock, X1-dir
+nx2       = 128                 # Number of cells in each MeshBlock, X2-dir
+nx3       = 128                 # Number of cells in each MeshBlock, X3-dir
 
 <time>
 evolution  = dynamic            # dynamic/kinematic/static
@@ -51,6 +49,7 @@ rsolver     = hlle               # Riemann-solver to be used
 nscalars    = 1                 # number of passive scalars in hydro
 gamma       = 1.666666666667    # gamma = C_p/C_v
 fofc        = true
+tfloor      = 8.315e-5          # T floor = 1e4 K (T_unit = 1.2027e8 K for mu = 1); needed in single precision
 
 <hydro_srcterms>
 ism_cooling      = true
@@ -70,12 +69,12 @@ time_cgs    = 3.086e+13         # 0.97 Myr; v0 = 1000 km/s
 user_srcs   = True              #Set to True to enable User Source Terms
 n_cgm       = 1.0e-3            #1 mp/cc         
 T_cgm       = 1e6               #K
-M_bh        = 0.811             #2e7 M_solar 
-v_bh        = 1.0               #1000km/s
-epsilon     = 1.0e-5            #pc (0.1R_bondi)
-Mdot        = 3.97e-2           #1 Msun/yr
-vw          = 0.1               #1e2 km/s
-r_inj       = 0.1               #100 pc
+M_bh        = 2.0e7             # Msun (converted to code units in the pgen)
+v_bh        = 1.0               # 1000km/s
+epsilon     = 1.0e-5            # pc (0.1R_bondi)
+Mdot        = 2.0e-2            # Msun/yr (converted to code units in the pgen)
+vw          = 0.1               # 1e2 km/s
+r_inj       = 0.1               # 100 pc
 
 <output1>
 file_type   = hst               # History data dump

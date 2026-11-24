@@ -74,6 +74,8 @@ SourceTerms::SourceTerms(std::string block, MeshBlockPack *pp, ParameterInput *p
   cool_mask = false;
   cool_mask_index = 0;
   cool_mask_threshold = 0.0;
+  heat_ref_rho = 0.0;
+  heat_tmax = static_cast<Real>(std::numeric_limits<float>::max());
 
   // (1) read data for (constant) gravitational acceleration
   if (const_accel) {
@@ -118,42 +120,43 @@ SourceTerms::SourceTerms(std::string block, MeshBlockPack *pp, ParameterInput *p
                   << std::endl;
         std::exit(EXIT_FAILURE);
       }
-      cool_table = pin->GetOrAddBoolean(block, "cool_table", true);
-      if (cool_table) {
-        // Lambda(T) tabulated on a uniform grid in log10 T from 10 K to 10^9 K. Stored as
-        // float: on GPUs with slow FP64 (e.g. RTX/Ada workstation cards, 1/64 rate) this
-        // replaces the double-precision log10/pow/exp in ISMCoolFn() by one log10f and
-        // two cached loads. Below/above the range the end values are used.
-        const double lt0 = 1.0, lt1 = 9.0, dlt = 0.002;
-        cool_tab_n     = static_cast<int>(std::lround((lt1 - lt0)/dlt)) + 1;
-        cool_tab_logt0 = static_cast<float>(lt0);
-        cool_tab_dinv  = static_cast<float>(1.0/dlt);
-        cool_tab = DvceArray1D<float>("cool_tab", cool_tab_n);
-        auto htab = Kokkos::create_mirror_view(cool_tab);
-        for (int n = 0; n < cool_tab_n; ++n) {
-          htab(n) = static_cast<float>(ISMCoolFn(std::pow(10.0, lt0 + n*dlt)));
-        }
-        Kokkos::deep_copy(cool_tab, htab);
-        // report interpolation accuracy at interval midpoints, skipping the two intervals
-        // that straddle the (discontinuous) branch boundaries of ISMCoolFn at 4.2 and 8.15
-        double maxerr = 0.0;
-        for (int n = 0; n < cool_tab_n - 1; ++n) {
-          double a = lt0 + n*dlt, b = a + dlt;
-          const double tol = 1.0e-9;
-          if ((a <= 4.2 + tol && b >= 4.2 - tol) ||
-              (a <= 8.15 + tol && b >= 8.15 - tol)) continue;
-          double exact = ISMCoolFn(std::pow(10.0, a + 0.5*dlt));
-          double interp = 0.5*(static_cast<double>(htab(n)) + static_cast<double>(htab(n+1)));
-          if (exact > 0.0) maxerr = std::max(maxerr, std::fabs(interp/exact - 1.0));
-        }
-        if (global_variable::my_rank == 0) {
-          std::cout << "ISM cooling: tabulated Lambda(T), " << cool_tab_n
-                    << " entries, max rel. interpolation error = " << maxerr << std::endl;
-        }
-      }
       if (global_variable::my_rank == 0) {
         std::cout << "ISM cooling: operator-split sub-cycling, cool_nsub_max="
                   << cool_nsub_max << " cool_cfl=" << cool_cfl << std::endl;
+      }
+    }
+    // default: table with sub-cycled cooling, analytic ISMCoolFn() otherwise
+    cool_table = pin->GetOrAddBoolean(block, "cool_table", ism_cooling_subcycle);
+    if (cool_table) {
+      // Lambda(T) tabulated on a uniform grid in log10 T from 10 K to 10^9 K. Stored as
+      // float: on GPUs with slow FP64 (e.g. RTX/Ada workstation cards, 1/64 rate) this
+      // replaces the double-precision log10/pow/exp in ISMCoolFn() by one log10f and
+      // two cached loads. Below/above the range the end values are used.
+      const double lt0 = 1.0, lt1 = 9.0, dlt = 0.002;
+      cool_tab_n     = static_cast<int>(std::lround((lt1 - lt0)/dlt)) + 1;
+      cool_tab_logt0 = static_cast<float>(lt0);
+      cool_tab_dinv  = static_cast<float>(1.0/dlt);
+      cool_tab = DvceArray1D<float>("cool_tab", cool_tab_n);
+      auto htab = Kokkos::create_mirror_view(cool_tab);
+      for (int n = 0; n < cool_tab_n; ++n) {
+        htab(n) = static_cast<float>(ISMCoolFn(std::pow(10.0, lt0 + n*dlt)));
+      }
+      Kokkos::deep_copy(cool_tab, htab);
+      // report interpolation accuracy at interval midpoints, skipping the two intervals
+      // that straddle the (discontinuous) branch boundaries of ISMCoolFn at 4.2 and 8.15
+      double maxerr = 0.0;
+      for (int n = 0; n < cool_tab_n - 1; ++n) {
+        double a = lt0 + n*dlt, b = a + dlt;
+        const double tol = 1.0e-9;
+        if ((a <= 4.2 + tol && b >= 4.2 - tol) ||
+            (a <= 8.15 + tol && b >= 8.15 - tol)) continue;
+        double exact = ISMCoolFn(std::pow(10.0, a + 0.5*dlt));
+        double interp = 0.5*(static_cast<double>(htab(n)) + static_cast<double>(htab(n+1)));
+        if (exact > 0.0) maxerr = std::max(maxerr, std::fabs(interp/exact - 1.0));
+      }
+      if (global_variable::my_rank == 0) {
+        std::cout << "ISM cooling: tabulated Lambda(T), " << cool_tab_n
+                  << " entries, max rel. interpolation error = " << maxerr << std::endl;
       }
     }
   }
@@ -258,14 +261,21 @@ void SourceTerms::ISMCooling(const DvceArray5D<Real> &w0, const EOS_Data &eos_da
   const bool mask = cool_mask;
   const int imask = cool_mask_index;
   const Real mthr = cool_mask_threshold;
+  const bool use_tab = cool_table;
+  auto tab = cool_tab;
+  const float lt0 = cool_tab_logt0, dinv = cool_tab_dinv;
+  const int ntab = cool_tab_n;
+
+  const Real href = heat_ref_rho, htmax = heat_tmax;
 
   par_for("cooling", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
     if (mask && w0(m,imask,k,j,i) < mthr) return;
     // temperature in cgs unit
     Real temp = temp_unit*w0(m,IEN,k,j,i)/w0(m,IDN,k,j,i)*gm1;
-    Real lambda_cooling = ISMCoolFn(temp)/cooling_unit;
-    Real gamma_heating = heating_rate/heating_unit;
+    Real lambda_cooling = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab)/cooling_unit;
+    Real gamma_heating = heating_rate/heating_unit
+                         + ((href > 0.0 && temp < htmax) ? href*lambda_cooling : 0.0);
 
     u0(m,IEN,k,j,i) -= bdt * w0(m,IDN,k,j,i) *
                         (w0(m,IDN,k,j,i) * lambda_cooling - gamma_heating);
@@ -510,22 +520,6 @@ void SourceTerms::BeamSource(DvceArray5D<Real> &i0, const Real bdt) {
 }
 
 //----------------------------------------------------------------------------------------
-//! \fn CoolLambda()
-//! \brief Lambda(T) [erg cm^3/s], either by linear interpolation of the float table
-//! (uniform in log10 T, one log10f per call) or by the analytic ISMCoolFn().
-
-KOKKOS_INLINE_FUNCTION
-Real CoolLambda(const Real temp, const bool use_tab, const DvceArray1D<float> &tab,
-                const float lt0, const float dinv, const int ntab) {
-  if (!use_tab) return ISMCoolFn(temp);
-  float x = (log10f(static_cast<float>(temp)) - lt0)*dinv;
-  x = fminf(fmaxf(x, 0.0f), static_cast<float>(ntab - 1) - 1.0e-3f);
-  int   i0 = static_cast<int>(x);
-  float f  = x - static_cast<float>(i0);
-  return static_cast<Real>(tab(i0) + f*(tab(i0+1) - tab(i0)));
-}
-
-//----------------------------------------------------------------------------------------
 //! \fn Real SourceTerms::MinCoolingTime()
 //! \brief Rank-local minimum of t_cool = e_int / |n^2 Lambda(T) - n Gamma| over active
 //! cells. Cells at (or within 1% of) the energy floor max(pfloor, rho*tfloor)/(gamma-1)
@@ -564,6 +558,7 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
   const bool mask = cool_mask;
   const int imask = cool_mask_index;
   const Real mthr = cool_mask_threshold;
+  const Real href = heat_ref_rho, htmax = heat_tmax;
 
   Real tmin = static_cast<Real>(std::numeric_limits<float>::max());
   Kokkos::parallel_reduce("srcterms_min_tcool",
@@ -584,7 +579,9 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
     if (cools && eint > 1.01*efl) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
-      Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - heating_rate/heating_unit));
+      Real hr   = heating_rate/heating_unit
+                  + ((href > 0.0 && temp < htmax) ? href*lam/cooling_unit : 0.0);
+      Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - hr));
       min_t = fmin(eint/net, min_t);
     }
   }, Kokkos::Min<Real>(tmin));
@@ -658,6 +655,7 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
   const bool mask = cool_mask;
   const int imask = cool_mask_index;
   const Real mthr = cool_mask_threshold;
+  const Real href = heat_ref_rho, htmax = heat_tmax;
 
   // flattened loop over ALL cells (active + ghost), fused with the reduction that gives
   // the post-cooling t_cool,min for the next timestep (saves a separate pass)
@@ -685,7 +683,8 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
     for (int s = 0; s < ns; ++s) {
       Real temp = temp_unit*gm1*e/rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
-      Real net  = rho*(rho*lam/cooling_unit - heat);
+      Real rr   = (href > 0.0 && temp < htmax) ? rho - href : rho;
+      Real net  = rho*(rr*lam/cooling_unit - heat);
       e = fmax(e - dts*net, efl);
     }
 
@@ -697,7 +696,8 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
     if (cools && e > 1.01*efl) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
-      Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - heat));
+      Real rr   = (href > 0.0 && temp < htmax) ? rho - href : rho;
+      Real net  = FLT_MIN + fabs(rho*(rr*lam/cooling_unit - heat));
       min_t = fmin(e/net, min_t);
     }
   }, Kokkos::Min<Real>(tpost));

@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <sstream>
 
 #include "parameter_input.hpp"
@@ -68,10 +69,13 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     Real gamma_gas_     = pin->GetReal("hydro", "gamma");
     Real n_cgm_         = pin->GetReal("problem","n_cgm");
     Real T_cgm_         = pin->GetReal("problem","T_cgm");
-    Real M_bh_          = pin->GetReal("problem","M_bh");
+    // M_bh [Msun] and Mdot [Msun/yr] in the input; converted to code units in double
+    auto *pu            = pmbp->punit;
+    Real M_bh_          = static_cast<Real>(pin->GetReal("problem","M_bh")*pu->msun());
     Real v_bh_          = pin->GetReal("problem","v_bh");
     Real epsilon_       = pin->GetReal("problem","epsilon");
-    Real Mdot_          = pin->GetReal("problem","Mdot");
+    Real Mdot_          = static_cast<Real>(pin->GetReal("problem","Mdot")
+                                        *pu->msun()/pu->yr());
     Real vw_            = pin->GetReal("problem","vw");
     Real r_inj_         = pin->GetReal("problem","r_inj");
 
@@ -87,6 +91,11 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     pbh.r_inj           = r_inj_;
                  
 
+    if (global_variable::my_rank == 0) {
+        std::cout << "ucgm_subcycle: M_bh[code] = " << M_bh_
+                  << ", Mdot[code] = " << Mdot_ << std::endl;
+    }
+
     Real const &gm1     = gamma_gas_ - 1;          
     if (restart) return;
 
@@ -97,8 +106,8 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
         Real v_inj      = vw_/std::sqrt(2);
         Real rho_w      = (Mdot_)/(4*M_PI*SQR(r_inj_)*v_inj);
         Real pres_w     = (rho_w*SQR(v_inj))/gamma_gas_;
-        Real rho_cgm    = n_cgm_*pmbp->punit->mu();
-        Real T_cgm_code = T_cgm_/pmbp->punit->temperature_cgs();
+        Real rho_cgm    = static_cast<Real>(n_cgm_*pmbp->punit->mu());
+        Real T_cgm_code = static_cast<Real>(T_cgm_/pmbp->punit->temperature_cgs());
         Real pres_code  = rho_cgm*T_cgm_code;
         // std::cout << "rho_cgm = "<<rho_cgm<<",T_code"<<T_cgm_code<<",pres_code = " << pres_code << "\n";
 
@@ -122,20 +131,21 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
             Real rad = sqrt(SQR(x1v)+SQR(x2v)+SQR(x3v));
 
             if (rad<r_inj_){
+                Real rr = fmax(rad, static_cast<Real>(1.0e-20));
                 u0(m,IDN,k,j,i) = rho_w;
-                u0(m,IM1,k,j,i) = (rho_w*v_inj*x1v)/rad;
-                u0(m,IM2,k,j,i) = (rho_w*v_inj*x2v)/rad;
-                u0(m,IM3,k,j,i) = (rho_w*v_inj*x3v)/rad;
-                u0(m,IEN,k,j,i) = pres_w/gm1 + 0.5*(SQR(u0(m,IM1,k,j,i))+SQR(u0(m,IM2,k,j,i))+SQR(u0(m,IM3,k,j,i)))/u0(m,IDN,k,j,i);
+                u0(m,IM1,k,j,i) = (rho_w*v_inj*x1v)/rr;
+                u0(m,IM2,k,j,i) = (rho_w*v_inj*x2v)/rr;
+                u0(m,IM3,k,j,i) = (rho_w*v_inj*x3v)/rr;
+                u0(m,IEN,k,j,i) = pres_w/gm1 + static_cast<Real>(0.5)*(SQR(u0(m,IM1,k,j,i))+SQR(u0(m,IM2,k,j,i))+SQR(u0(m,IM3,k,j,i)))/u0(m,IDN,k,j,i);
                 //Add outflow tracer
-                u0(m, nfluid, k, j, i) = rho_w*1.0;
+                u0(m, nfluid, k, j, i) = rho_w;
             }
             else{
                 u0(m,IDN,k,j,i) = rho_cgm;
                 u0(m,IM1,k,j,i) = -1*rho_cgm*v_bh_;
                 u0(m,IM2,k,j,i) = 0.0;
                 u0(m,IM3,k,j,i) = 0.0;
-                u0(m,IEN,k,j,i) = pres_code/gm1 + 0.5*(SQR(u0(m,IM1,k,j,i))+SQR(u0(m,IM2,k,j,i))+SQR(u0(m,IM3,k,j,i)))/u0(m,IDN,k,j,i);
+                u0(m,IEN,k,j,i) = pres_code/gm1 + static_cast<Real>(0.5)*(SQR(u0(m,IM1,k,j,i))+SQR(u0(m,IM2,k,j,i))+SQR(u0(m,IM3,k,j,i)))/u0(m,IDN,k,j,i);
                 //Add tracer = 0 outside
                 u0(m, nfluid, k, j, i) = 0.0;
             }
@@ -173,7 +183,8 @@ namespace{
         Real gamma_gas_         = pbh.gamma_gas;
         Real M_bh_              = pbh.M_bh;
         Real epsilon_           = pbh.epsilon;
-        Real G_code             = pmbp->punit->grav_constant();
+        // G in code units, computed in double by Units, cast once
+        Real G_code             = static_cast<Real>(pmbp->punit->grav_constant());
         Real const &gm1 = gamma_gas_ - 1;
 
         par_for("bh_gravity", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
@@ -200,7 +211,9 @@ namespace{
             Real vz     = w0(m,IVZ,k,j,i);
             Real rho    = w0(m,IDN,k,j,i);
 
-            Real grad_phi_by_r  = (G_code*M_bh_)/(pow((SQR(rad)+SQR(epsilon_)),1.5));
+            // (r^2+eps^2)^{3/2} as x*sqrt(x): avoids pow(Real, double) on the device
+            Real r2e            = SQR(rad)+SQR(epsilon_);
+            Real grad_phi_by_r  = (G_code*M_bh_)/(r2e*sqrt(r2e));
             
             u0(m,IM1,k,j,i) -= rho*grad_phi_by_r*bdt*x1v;
             u0(m,IM2,k,j,i) -= rho*grad_phi_by_r*bdt*x2v;
@@ -258,14 +271,14 @@ namespace{
 
             Real rad    = sqrt(SQR(x1v)+SQR(x2v)+SQR(x3v));
             if (rad<r_inj_){
-                Real dens       = w0(m,IDN,k,j,i);     
+                Real rr         = fmax(rad, static_cast<Real>(1.0e-20));
                 u0(m,IDN,k,j,i) += S_rho*bdt;
-                u0(m,IM1,k,j,i) += (S_rho*v_inj*x1v/rad)*bdt;
-                u0(m,IM2,k,j,i) += (S_rho*v_inj*x2v/rad)*bdt;
-                u0(m,IM3,k,j,i) += (S_rho*v_inj*x3v/rad)*bdt;
+                u0(m,IM1,k,j,i) += (S_rho*v_inj*x1v/rr)*bdt;
+                u0(m,IM2,k,j,i) += (S_rho*v_inj*x2v/rr)*bdt;
+                u0(m,IM3,k,j,i) += (S_rho*v_inj*x3v/rr)*bdt;
                 u0(m,IEN,k,j,i) += S_e*bdt;
-                //Add tracer
-                u0(m,nfluid,k,j,i) = dens*1.0;
+                // tracer: injection cells are pure wind (mass fraction 1)
+                u0(m,nfluid,k,j,i) = u0(m,IDN,k,j,i);
             }
         });
         return;
@@ -287,21 +300,24 @@ namespace{
         int nfluid = pmbp->phydro->nhydro;
 
         Real gamma_gas = eos_data.gamma;
-        Real gm1 = gamma_gas - 1.0;
-        Real temp_unit = pmbp->punit->temperature_cgs();
+        Real gm1 = gamma_gas - static_cast<Real>(1.0);
 
-        Real n_unit = pmbp->punit->density_cgs()/(pmbp->punit->mu()*pmbp->punit->atomic_mass_unit_cgs);
-
-        Real cooling_unit = pmbp->punit->pressure_cgs()/(pmbp->punit->time_cgs()*n_unit * n_unit);
+        // Unit factors in double on the host (as in SourceTerms::ISMCooling), cast once so
+        // the kernel runs in the build precision. cooling_unit ~ 1e-22 fits in float.
+        auto *pu = pmbp->punit;
+        const double n_unit_d = pu->density_cgs()/(pu->mu()*pu->atomic_mass_unit_cgs);
+        const double cool_unit_d = pu->pressure_cgs()/(pu->time_cgs()*n_unit_d*n_unit_d);
+        Real temp_unit    = static_cast<Real>(pu->temperature_cgs());
+        Real cooling_unit = static_cast<Real>(cool_unit_d);
 
         // Choose this threshold in terms of wind mass fraction.
         // f_wind < 1e-3 means essentially pure CGM.
-        Real wind_threshold = 1e-3;
+        Real wind_threshold = static_cast<Real>(1.0e-3);
 
         par_for("heating", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
         KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
             Real rho = w0(m, IDN, k, j, i);
-            if (rho <= 0.0) {
+            if (rho <= static_cast<Real>(0.0)) {
             return;
             }
             Real temp = temp_unit*w0(m,IEN,k,j,i)/w0(m,IDN,k,j,i)*gm1;
@@ -309,7 +325,7 @@ namespace{
             // Primitive passive scalar = wind mass fraction
             Real f_wind = w0(m, nfluid, k, j, i);
             // Guard against numerical overshoots
-            f_wind =Kokkos::fmax(0.0, Kokkos::fmin(1.0, f_wind));
+            f_wind = fmax(static_cast<Real>(0.0), fmin(static_cast<Real>(1.0), f_wind));
             if (f_wind < wind_threshold) {
             u0(m, IEN, k, j, i) += bdt*rho*rho*cgm_heating_lambda;
             }
@@ -349,8 +365,8 @@ namespace{
         Real T_cgm_     = pbh.T_cgm;
 
         Real const &gm1 = gamma_gas_ - 1; 
-        Real rho_cgm    = n_cgm_*pmbp->punit->mu();
-        Real T_cgm_code = T_cgm_/pmbp->punit->temperature_cgs();
+        Real rho_cgm    = static_cast<Real>(n_cgm_*pmbp->punit->mu());
+        Real T_cgm_code = static_cast<Real>(T_cgm_/pmbp->punit->temperature_cgs());
         Real pres_code  = rho_cgm*T_cgm_code;
 
 
