@@ -30,10 +30,29 @@ ix3_bc    = outflow             # inner-X3 boundary flag
 ox3_bc    = outflow             # outer-X3 boundary flag
 
 <meshblock>
-nx1       = 256                 # Number of cells in each MeshBlock, X1-dir
-nx2       = 128                 # Number of cells in each MeshBlock, X2-dir
-nx3       = 128                 # Number of cells in each MeshBlock, X3-dir
+nx1       = 32                  # Number of cells in each MeshBlock, X1-dir
+nx2       = 32                  # Number of cells in each MeshBlock, X2-dir
+nx3       = 32                  # Number of cells in each MeshBlock, X3-dir
 
+# SMR around the injection sphere. Root blocks are 1 kpc cubes with edges at integers,
+# so the BH (origin) sits on a block corner and each level around it is a 2x2x2 set of
+# parent blocks refined (64 children). Regions snap outward to those blocks:
+#   level 1: dx = 15.6 pc on [-1, 1]^3
+#   level 2: dx =  7.8 pc on [-0.5, 0.5]^3  -> r_inj = 0.05 kpc is 6.4 fine cells
+# Blocks: 1024 root - 8 + 64 - 8 + 64 = 1136 (~16.5 GB in single precision with ghosts
+# and SMR buffers; fits the 20 GB GPU). dt is set by the finest level (4x smaller).
+<mesh_refinement>
+refinement         = static     # static mesh refinement
+prolong_primitives = true       # prolongate primitives (safer with huge contrasts)
+
+<refined_region1>
+level     = 1
+x1min     = -0.1
+x1max     = 0.1
+x2min     = -0.1
+x2max     = 0.1
+x3min     = -0.1
+x3max     = 0.1
 <time>
 evolution  = dynamic            # dynamic/kinematic/static
 integrator = rk2                # time integration algorithm
@@ -73,12 +92,12 @@ M_bh        = 2.0e7             # Msun
 v_bh        = 1.0               # code units (1000 km/s)
 epsilon     = 1.0e-2            # kpc, gravitational softening
 n_cgm0      = 1.0               # cm^-3, CGM density at t = 0
-dt_ncgm     = 8.0               # n_cgm(t) = n_cgm0*exp(-t/dt_ncgm)
+dt_ncgm     = 10.0              # n_cgm(t) = n_cgm0*exp(-t/dt_ncgm)
 T_cgm       = 1.0e6             # K
-Mdot0       = 0.5               # Msun/yr, wind mass-loss rate at t = 0
+Mdot0       = 0.1               # Msun/yr, wind mass-loss rate at t = 0
 dt_mdot     = 15.0              # Mdot(t) = Mdot0*exp(-t/dt_mdot)
 vw0         = 0.1               # code units (100 km/s), constant wind speed
-r_inj       = 0.1               # kpc, injection radius (3.2 cells)
+r_inj       = 0.05              # kpc, injection radius (6.4 cells at SMR level 2)
 
 # Turbulence: frozen solenoidal plane waves, advected in with the CGM at -v_bh
 sigv        = 30.0              # km/s, 3D rms turbulent velocity

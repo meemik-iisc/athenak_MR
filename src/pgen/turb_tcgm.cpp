@@ -12,7 +12,8 @@
 //!  - CGM:   n(t) = n_cgm0 exp(-t/dt_ncgm) at fixed T_cgm, imposed in the outer-x1 ghosts.
 //!  - Wind:  mass, momentum and energy injected uniformly in r < r_inj, radial speed
 //!           v_inj = v_w/sqrt(2), with Mdot(t) = Mdot0 exp(-t/dt_mdot) and v_w = vw0.
-//!           Passive scalar 0 is the wind mass fraction (1 in the wind, 0 in the CGM).
+//!           Passive scalar 0 is the wind mass fraction (1 in the wind, 0 in the CGM);
+//!           the injected mass is added to it, so CGM crossing r < r_inj stays untagged.
 //!  - BH:    softened point-mass gravity, G M_bh / (r^2 + eps^2)^{3/2}.
 //!  - Turb:  frozen, solenoidal velocity field made of random plane waves,
 //!               v_t(x) = sum_n a_n e_n cos(k_n . x' + phi_n),   e_n . k_n = 0,
@@ -317,7 +318,8 @@ void AddUserSrcs(Mesh *pm, const Real bdt) {
     u0(m,IM3,k,j,i) -= bdt*rho*g_over_r*z;
     u0(m,IEN,k,j,i) -= bdt*rho*g_over_r*vdotr;
 
-    // wind injection; the cell becomes pure wind (tracer = 1)
+    // wind injection; only the injected mass is tagged, so scalar 0 stays the true wind
+    // mass fraction (CGM passing through r < r_inj is not relabelled as wind)
     Real rad = sqrt(r2);
     if (rad < r_inj) {
       Real rr = fmax(rad, 1.0e-20);
@@ -326,7 +328,7 @@ void AddUserSrcs(Mesh *pm, const Real bdt) {
       u0(m,IM2,k,j,i) += bdt*s_rho*v_inj*y/rr;
       u0(m,IM3,k,j,i) += bdt*s_rho*v_inj*z/rr;
       u0(m,IEN,k,j,i) += bdt*s_e;
-      u0(m,nhyd,k,j,i) = u0(m,IDN,k,j,i);
+      u0(m,nhyd,k,j,i) += bdt*s_rho;
     }
   });
 }

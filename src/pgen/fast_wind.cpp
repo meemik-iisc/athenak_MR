@@ -26,7 +26,10 @@
 //!                 (a constant Gamma = n_cgm Lambda(T_cgm) makes the 1e6 K ambient
 //!                 thermally unstable, e-folding in ~t_cool), compressed gas cools,
 //!                 rarefied gas below T_heat_max is heated, and gas above T_heat_max
-//!                 (e.g. shocked CGM) cools at the full n^2 Lambda(T);
+//!                 (e.g. shocked CGM) cools at the full n^2 Lambda(T). This law is
+//!                 thermally unstable at the grid scale wherever t_cool << dx/c_s; with
+//!                 heat_n_min = f >= 1, gas with n <= f n_cgm below T_heat_max neither
+//!                 cools nor heats, so only clearly compressed gas cools;
 //!             (b) cool_mask_scalar = 0: gas with wind tracer < threshold never cools.
 //!  - Wind cooling (wind_cool = true): every stage, cells with wind fraction
 //!             f_w > wind_cool_fmin and T > T_wind_cool are reset to T_wind_cool
@@ -151,6 +154,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
   // T_heat_max, done inside the cooling kernels (see SourceTerms::heat_ref_rho)
   bool heat_balance = pin->GetOrAddBoolean("problem", "heat_balance", false);
   double t_heat_max = pin->GetOrAddReal("problem", "T_heat_max", 3.0e6);  // K
+  // below T_heat_max, gas with n <= heat_n_min*n_cgm neither cools nor heats (0 keeps the
+  // pure density-matched law; >= 1 also stops the heating of rarefied gas)
+  double heat_n_min = pin->GetOrAddReal("problem", "heat_n_min", 0.0);
   if (heat_balance) {
     if (pmbp->phydro->psrc == nullptr || !pmbp->phydro->psrc->ism_cooling) {
       std::cout << "### FATAL ERROR in " << __FILE__ << " at line " << __LINE__
@@ -159,6 +165,7 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
     }
     pmbp->phydro->psrc->hrate = 0.0;
     pmbp->phydro->psrc->heat_ref_rho = fw.rho_cgm;
+    pmbp->phydro->psrc->heat_rho_min = static_cast<Real>(heat_n_min)*fw.rho_cgm;
     pmbp->phydro->psrc->heat_tmax = static_cast<Real>(t_heat_max);
   }
 
@@ -183,7 +190,9 @@ void ProblemGenerator::UserProblem(ParameterInput *pin, const bool restart) {
               << fw.b_tracer << ", r_diag = " << fw.r_diag;
     if (heat_balance) {
       std::cout << std::endl << "  heating n_cgm Lambda(T) per particle (heat_ref_rho = "
-                << fw.rho_cgm << ") for T < " << t_heat_max << " K; hrate = 0";
+                << fw.rho_cgm << ") for T < " << t_heat_max << " K; hrate = 0"
+                << std::endl << "  no net cooling/heating for n <= " << heat_n_min
+                << " n_cgm and T < T_heat_max";
     }
     std::cout << std::endl;
   }

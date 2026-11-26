@@ -86,4 +86,21 @@ Real CoolLambda(const Real temp, const bool use_tab, const DvceArray1D<float> &t
   return static_cast<Real>(tab(i0) + f*(tab(i0+1) - tab(i0)));
 }
 
+//----------------------------------------------------------------------------------------
+//! \fn Real HeatBalanceRho()
+//! \brief Effective density rr in the net cooling rate rho*(rr*Lambda - hrate) for the
+//! optional density-matched heating (SourceTerms::heat_ref_rho = href):
+//!   href <= 0 or T >= htmax : rr = rho          (full cooling, no extra heating)
+//!   rho > hrmin             : rr = rho - href   (density-matched net cooling)
+//!   rho <= hrmin            : rr = 0            (no net cooling or heating)
+//! hrmin >= href switches off the heating of rarefied gas and freezes weakly compressed
+//! gas, which removes the grid-scale thermal instability of the n(n - n_cgm)Lambda law.
+
+KOKKOS_INLINE_FUNCTION
+Real HeatBalanceRho(const Real rho, const Real temp, const Real href, const Real hrmin,
+                    const Real htmax) {
+  if (href <= 0.0 || temp >= htmax) return rho;
+  return (rho > hrmin) ? rho - href : 0.0;
+}
+
 #endif  // SRCTERMS_ISMCOOLING_HPP_

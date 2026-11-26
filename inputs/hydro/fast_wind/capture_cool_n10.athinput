@@ -121,6 +121,10 @@ n_cgm       = 10.0              # cm^-3 (rho = 0.6 m_p n)
 T_cgm       = 1.0e6             # K
 heat_balance = true             # heating n_cgm Lambda(T) per particle: net cooling n(n-n_cgm)Lambda
 T_heat_max  = 3.0e6             # K; no heating above (shocked gas cools at n^2 Lambda)
+heat_n_min  = 2.0               # below T_heat_max, n <= 2 n_cgm neither cools nor heats:
+                                # without it the n(n-n_cgm)Lambda law is unstable at the grid
+                                # scale (ambient t_cool 5.6 kyr << dx/c_s ~ 50 kyr) and the
+                                # wake fills with 1e4 K / 3e6 K stripes
 Mdot        = 0.614             # Msun/yr  (Mdot v_w = 3.5e34 dyn)
 v_w         = 8994.0            # km/s (0.03 c)
 T_w         = 1.0e4             # K

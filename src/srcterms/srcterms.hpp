@@ -51,8 +51,10 @@ class SourceTerms {
   // heating per volume rho*heat_ref_rho*Lambda(T)/cooling_unit for T < heat_tmax [K],
   // so net cooling = rho*(rho - heat_ref_rho)*Lambda(T): zero at rho = heat_ref_rho for
   // any T (a uniform ambient medium cannot run away thermally), compressed gas cools,
-  // and gas hotter than heat_tmax cools at the full rate.
+  // and gas hotter than heat_tmax cools at the full rate. Below heat_tmax, gas with
+  // rho <= heat_rho_min has no net cooling or heating (see HeatBalanceRho()).
   Real heat_ref_rho;
+  Real heat_rho_min;
   Real heat_tmax;
 
   // data for sub-cycled ISM cooling (operator split, applied by Driver after RK stages)

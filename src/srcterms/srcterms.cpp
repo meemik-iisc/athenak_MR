@@ -75,6 +75,7 @@ SourceTerms::SourceTerms(std::string block, MeshBlockPack *pp, ParameterInput *p
   cool_mask_index = 0;
   cool_mask_threshold = 0.0;
   heat_ref_rho = 0.0;
+  heat_rho_min = 0.0;
   heat_tmax = static_cast<Real>(std::numeric_limits<float>::max());
 
   // (1) read data for (constant) gravitational acceleration
@@ -266,7 +267,7 @@ void SourceTerms::ISMCooling(const DvceArray5D<Real> &w0, const EOS_Data &eos_da
   const float lt0 = cool_tab_logt0, dinv = cool_tab_dinv;
   const int ntab = cool_tab_n;
 
-  const Real href = heat_ref_rho, htmax = heat_tmax;
+  const Real href = heat_ref_rho, hrmin = heat_rho_min, htmax = heat_tmax;
 
   par_for("cooling", DevExeSpace(), 0, nmb1, ks, ke, js, je, is, ie,
   KOKKOS_LAMBDA(const int m, const int k, const int j, const int i) {
@@ -274,11 +275,10 @@ void SourceTerms::ISMCooling(const DvceArray5D<Real> &w0, const EOS_Data &eos_da
     // temperature in cgs unit
     Real temp = temp_unit*w0(m,IEN,k,j,i)/w0(m,IDN,k,j,i)*gm1;
     Real lambda_cooling = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab)/cooling_unit;
-    Real gamma_heating = heating_rate/heating_unit
-                         + ((href > 0.0 && temp < htmax) ? href*lambda_cooling : 0.0);
+    Real rr = HeatBalanceRho(w0(m,IDN,k,j,i), temp, href, hrmin, htmax);
 
     u0(m,IEN,k,j,i) -= bdt * w0(m,IDN,k,j,i) *
-                        (w0(m,IDN,k,j,i) * lambda_cooling - gamma_heating);
+                        (rr * lambda_cooling - heating_rate/heating_unit);
   });
 
   return;
@@ -558,7 +558,7 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
   const bool mask = cool_mask;
   const int imask = cool_mask_index;
   const Real mthr = cool_mask_threshold;
-  const Real href = heat_ref_rho, htmax = heat_tmax;
+  const Real href = heat_ref_rho, hrmin = heat_rho_min, htmax = heat_tmax;
 
   Real tmin = static_cast<Real>(std::numeric_limits<float>::max());
   Kokkos::parallel_reduce("srcterms_min_tcool",
@@ -579,9 +579,8 @@ Real SourceTerms::MinCoolingTime(const DvceArray5D<Real> &w0, const EOS_Data &eo
     if (cools && eint > 1.01*efl) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
-      Real hr   = heating_rate/heating_unit
-                  + ((href > 0.0 && temp < htmax) ? href*lam/cooling_unit : 0.0);
-      Real net  = FLT_MIN + fabs(rho*(rho*lam/cooling_unit - hr));
+      Real rr   = HeatBalanceRho(rho, temp, href, hrmin, htmax);
+      Real net  = FLT_MIN + fabs(rho*(rr*lam/cooling_unit - heating_rate/heating_unit));
       min_t = fmin(eint/net, min_t);
     }
   }, Kokkos::Min<Real>(tmin));
@@ -655,7 +654,7 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
   const bool mask = cool_mask;
   const int imask = cool_mask_index;
   const Real mthr = cool_mask_threshold;
-  const Real href = heat_ref_rho, htmax = heat_tmax;
+  const Real href = heat_ref_rho, hrmin = heat_rho_min, htmax = heat_tmax;
 
   // flattened loop over ALL cells (active + ghost), fused with the reduction that gives
   // the post-cooling t_cool,min for the next timestep (saves a separate pass)
@@ -683,7 +682,7 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
     for (int s = 0; s < ns; ++s) {
       Real temp = temp_unit*gm1*e/rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
-      Real rr   = (href > 0.0 && temp < htmax) ? rho - href : rho;
+      Real rr   = HeatBalanceRho(rho, temp, href, hrmin, htmax);
       Real net  = rho*(rr*lam/cooling_unit - heat);
       e = fmax(e - dts*net, efl);
     }
@@ -696,7 +695,7 @@ void SourceTerms::SubcycleISMCooling(DvceArray5D<Real> &w0, DvceArray5D<Real> &u
     if (cools && e > 1.01*efl) {
       Real temp = temp_unit*p_over_rho;
       Real lam  = CoolLambda(temp, use_tab, tab, lt0, dinv, ntab);
-      Real rr   = (href > 0.0 && temp < htmax) ? rho - href : rho;
+      Real rr   = HeatBalanceRho(rho, temp, href, hrmin, htmax);
       Real net  = FLT_MIN + fabs(rho*(rr*lam/cooling_unit - heat));
       min_t = fmin(e/net, min_t);
     }
